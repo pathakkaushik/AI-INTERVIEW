@@ -24,9 +24,9 @@ const getLeaderboard = async (req, res) => {
       const totalInterviews = await Interview.countDocuments({ userId: user._id, status: 'completed' });
 
       const progressFields = [
-        { name: 'Technical', value: user.progress.technical },
-        { name: 'Behavioral', value: user.progress.behavioral },
-        { name: 'Body Language', value: user.progress.bodyLanguage }
+        { name: 'Technical', value: user.progress?.technical || 0 },
+        { name: 'Behavioral', value: user.progress?.behavioral || 0 },
+        { name: 'Body Language', value: user.progress?.bodyLanguage || 0 }
       ];
       const topSkill = progressFields.sort((a, b) => b.value - a.value)[0];
 

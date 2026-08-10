@@ -7,6 +7,7 @@ import CognitiveLoadMeter from '../components/CognitiveLoadMeter';
 import CameraPermissionModal from '../components/CameraPermissionModal';
 import Navbar from '../components/Navbar';
 import useMediaRecorder from '../hooks/useMediaRecorder';
+import useFaceDetection from '../hooks/useFaceDetection';
 import { Mic, MicOff, Video, VideoOff, Settings2, UserCheck, AlertTriangle, Play, Square, FileText, Code, Server, Layers, Cloud, Brain, Smartphone, Layout, Users } from 'lucide-react';
 import { api } from '../utils/api';
 
@@ -45,9 +46,14 @@ const Interview = () => {
   const [resumeText, setResumeText] = useState('');
 
   const { videoRef, stream, isMuted, isCameraOff, audioLevel, startCamera, stopCamera, toggleMute, toggleCamera } = useMediaRecorder();
+  const { faceDetected, eyeContactScore, isEyeOpen, modelsLoaded } = useFaceDetection(videoRef);
 
   const [isListening, setIsListening] = useState(false);
   const recognitionRef = useRef(null);
+  
+  const [inputMode, setInputMode] = useState('voice'); // 'voice' or 'type'
+  const [sttSupported] = useState(() => !!(window.SpeechRecognition || window.webkitSpeechRecognition));
+  const [resumeFile, setResumeFile] = useState(null);
 
   // Settings states
   const [showSettings, setShowSettings] = useState(false);
@@ -364,7 +370,18 @@ const Interview = () => {
   const startInterviewSession = async (skipCamera = false) => {
     setLoading(true);
     try {
-      const res = await api.createInterview({ title: `${selectedRole} - ${personality} Interview`, role: selectedRole, personality, difficulty, resumeText });
+      let res;
+      if (resumeFile) {
+        const formData = new FormData();
+        formData.append('title', `${selectedRole} - ${personality} Interview`);
+        formData.append('role', selectedRole);
+        formData.append('personality', personality);
+        formData.append('difficulty', difficulty);
+        formData.append('resume', resumeFile);
+        res = await api.createInterviewWithFile(formData);
+      } else {
+        res = await api.createInterview({ title: `${selectedRole} - ${personality} Interview`, role: selectedRole, personality, difficulty, resumeText });
+      }
       const newId = res.data?._id || res.data?.id;
       navigate(`/interview/${newId}`, { replace: true, state: { skipCamera } });
     } catch (err) { 
@@ -409,18 +426,18 @@ const Interview = () => {
 
   const handleSubmitRef = useRef();
   handleSubmitRef.current = handleSubmitAnswer;
+  const timerExpiredRef = useRef(false);
 
   // Countdown timer effect
   useEffect(() => {
     let timer;
+    timerExpiredRef.current = false;
     if (phase === 'active' && isTimerRunning && questionTimeLeft > 0) {
       timer = setInterval(() => {
         setQuestionTimeLeft(prev => {
           if (prev <= 1) {
             clearInterval(timer);
-            if (handleSubmitRef.current) {
-              handleSubmitRef.current(true);
-            }
+            timerExpiredRef.current = true;
             return 0;
           }
           return prev - 1;
@@ -429,6 +446,14 @@ const Interview = () => {
     }
     return () => clearInterval(timer);
   }, [phase, isTimerRunning]);
+
+  // Auto-submit when timer expires (separate effect to avoid side-effect in state updater)
+  useEffect(() => {
+    if (questionTimeLeft === 0 && timerExpiredRef.current && handleSubmitRef.current) {
+      timerExpiredRef.current = false;
+      handleSubmitRef.current(true);
+    }
+  }, [questionTimeLeft]);
 
   const handleDurationChange = (newVal) => {
     setQuestionDuration(newVal);
@@ -522,19 +547,25 @@ const Interview = () => {
                   <div className="flex justify-between items-center mb-3">
                     <h3 className="font-semibold text-sm">Resume / Key Skills (Optional)</h3>
                     <label className="text-xs font-semibold cursor-pointer text-indigo-400 hover:text-indigo-300 transition-smooth">
-                      Upload .txt Resume
+                      Upload Resume
                       <input
                         type="file"
-                        accept=".txt"
+                        accept=".txt,.pdf,.docx,application/pdf,application/vnd.openxmlformats-officedocument.wordprocessingml.document"
                         style={{ display: 'none' }}
                         onChange={(e) => {
                           const file = e.target.files[0];
                           if (file) {
-                            const reader = new FileReader();
-                            reader.onload = (event) => {
-                              setResumeText(event.target.result);
-                            };
-                            reader.readAsText(file);
+                            if (file.name.endsWith('.txt')) {
+                              setResumeFile(null);
+                              const reader = new FileReader();
+                              reader.onload = (event) => {
+                                setResumeText(event.target.result);
+                              };
+                              reader.readAsText(file);
+                            } else {
+                              setResumeFile(file);
+                              setResumeText(`[Document uploaded: ${file.name}]`);
+                            }
                           }
                         }}
                       />
@@ -854,6 +885,12 @@ const Interview = () => {
                 <div style={{ display: 'flex', flexDirection: 'column', minHeight: 0 }}>
                   <p className="text-sm text-secondary mb-4 italic flex gap-2"><div className="w-1 h-4 bg-purple-500" /> Speak or type your answer...</p>
                   
+                  {!sttSupported && (
+                    <div style={{ background: 'rgba(251, 191, 36, 0.1)', border: '1px solid rgba(251, 191, 36, 0.3)', borderRadius: '8px', padding: '8px 12px', marginBottom: '8px', fontSize: '0.75rem', color: '#fbbf24' }}>
+                      ⚠️ Voice input not available in this browser. Use Chrome or Edge for voice mode.
+                    </div>
+                  )}
+
                   <textarea 
                     className="form-textarea mb-4" 
                     placeholder={isListening ? "Listening... Speak into your mic now!" : "Type your answer or click 'Answer with Voice'..."} 
@@ -862,30 +899,53 @@ const Interview = () => {
                     style={{ minHeight: '120px' }}
                   />
 
-                  <div style={{ display: 'flex', gap: '0.5rem', marginBottom: '1rem' }}>
-                    <Button 
-                      type="button"
-                      variant="secondary"
-                      onClick={toggleSpeechRecognition}
-                      style={{ 
-                        flex: 1, 
-                        background: isListening ? 'rgba(239, 68, 68, 0.15)' : 'rgba(99, 102, 241, 0.1)',
-                        border: isListening ? '1px solid #ef4444' : '1px solid rgba(99, 102, 241, 0.2)',
-                        color: isListening ? '#ef4444' : 'var(--accent-blue)',
-                        borderRadius: '12px'
-                      }}
-                    >
-                      {isListening ? (
-                        <span className="flex items-center gap-2">
-                          <span className="animate-pulse" style={{ width: '8px', height: '8px', borderRadius: '50%', background: '#ef4444' }} />
-                          Stop Listening
-                        </span>
-                      ) : (
-                        <span className="flex items-center gap-2">
-                          <Mic size={14} /> Answer with Voice
-                        </span>
-                      )}
-                    </Button>
+                  <div style={{ display: 'flex', gap: '0.5rem', marginBottom: '1rem', flexWrap: 'wrap', alignItems: 'center' }}>
+                    {sttSupported && inputMode === 'voice' && (
+                      <Button 
+                        type="button"
+                        variant="secondary"
+                        onClick={toggleSpeechRecognition}
+                        style={{ 
+                          flex: 1, 
+                          background: isListening ? 'rgba(239, 68, 68, 0.15)' : 'rgba(99, 102, 241, 0.1)',
+                          border: isListening ? '1px solid #ef4444' : '1px solid rgba(99, 102, 241, 0.2)',
+                          color: isListening ? '#ef4444' : 'var(--accent-blue)',
+                          borderRadius: '12px'
+                        }}
+                      >
+                        {isListening ? (
+                          <span className="flex items-center gap-2">
+                            <span className="animate-pulse" style={{ width: '8px', height: '8px', borderRadius: '50%', background: '#ef4444' }} />
+                            Stop Listening
+                          </span>
+                        ) : (
+                          <span className="flex items-center gap-2">
+                            <Mic size={14} /> Answer with Voice
+                          </span>
+                        )}
+                      </Button>
+                    )}
+                    
+                    {!sttSupported && (
+                      <div style={{ flex: 1, fontSize: '0.85rem', color: 'var(--text-secondary)', textAlign: 'center' }}>
+                        Voice input is not supported in this browser. Please type your answer below.
+                      </div>
+                    )}
+
+                    {sttSupported && (
+                      <button
+                        onClick={() => setInputMode(prev => prev === 'voice' ? 'type' : 'voice')}
+                        className="text-xs px-3 py-1 rounded-full"
+                        style={{
+                          background: 'rgba(255,255,255,0.08)',
+                          color: 'var(--text-secondary)',
+                          border: '1px solid var(--panel-border)',
+                          cursor: 'pointer'
+                        }}
+                      >
+                        {inputMode === 'voice' ? '⌨️ Switch to Typing' : '🎤 Switch to Voice'}
+                      </button>
+                    )}
 
                     <Button 
                       type="button" 
@@ -898,6 +958,39 @@ const Interview = () => {
                   </div>
 
                   {showCognitiveLoad && <CognitiveLoadMeter />}
+
+                  {/* Real-time Eye Contact Indicator (powered by face-api.js) */}
+                  {modelsLoaded && (
+                    <div style={{
+                      background: 'rgba(255,255,255,0.05)',
+                      border: '1px solid var(--panel-border)',
+                      borderRadius: '12px',
+                      padding: '10px 14px',
+                      marginTop: '8px',
+                      display: 'flex',
+                      alignItems: 'center',
+                      justifyContent: 'space-between'
+                    }}>
+                      <div style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>
+                        <span style={{
+                          width: '8px', height: '8px', borderRadius: '50%',
+                          background: faceDetected ? (isEyeOpen ? '#10b981' : '#f59e0b') : '#ef4444',
+                          display: 'inline-block',
+                          animation: faceDetected ? 'pulse 2s infinite' : 'none'
+                        }} />
+                        <span style={{ fontSize: '0.75rem', color: 'var(--text-secondary)' }}>
+                          {faceDetected ? (isEyeOpen ? 'Eye Contact' : 'Eyes Closed') : 'No Face Detected'}
+                        </span>
+                      </div>
+                      <span style={{
+                        fontSize: '0.875rem',
+                        fontWeight: 700,
+                        color: eyeContactScore >= 70 ? '#10b981' : eyeContactScore >= 40 ? '#f59e0b' : '#ef4444'
+                      }}>
+                        {eyeContactScore}%
+                      </span>
+                    </div>
+                  )}
                   <Button className="w-full mt-4" onClick={() => handleSubmitAnswer()} disabled={loading || !answerText.trim()} style={loading ? { opacity: 0.7 } : {}}>
                     {loading ? <span className="flex items-center gap-2"><span className="loading-spinner" style={{ width: '1rem', height: '1rem', borderWidth: '2px' }} />Analyzing...</span> : 'Submit Answer'}
                   </Button>

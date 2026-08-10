@@ -2,6 +2,8 @@ const User = require('../models/User');
 const Interview = require('../models/Interview');
 const Question = require('../models/Question');
 const Result = require('../models/Result');
+const fs = require('fs');
+const path = require('path');
 
 // @desc    Update user profile
 // @route   PUT /api/profile/update
@@ -51,6 +53,7 @@ const changePassword = async (req, res) => {
     }
 
     const user = await User.findById(req.user.id);
+    if (!user) return res.status(404).json({ success: false, message: 'User not found' });
     const isMatch = await user.comparePassword(currentPassword);
 
     if (!isMatch) {
@@ -93,6 +96,7 @@ const deleteAccount = async (req, res) => {
 const getStats = async (req, res) => {
   try {
     const user = await User.findById(req.user.id).select('-password');
+    if (!user) return res.status(404).json({ success: false, message: 'User not found' });
     const interviews = await Interview.find({ userId: req.user.id, status: 'completed' });
     const totalInterviews = interviews.length;
     const avgScore = totalInterviews > 0
@@ -109,4 +113,35 @@ const getStats = async (req, res) => {
   }
 };
 
-module.exports = { updateProfile, changePassword, deleteAccount, getStats };
+// @desc    Update user avatar
+// @route   PUT /api/profile/avatar
+const updateAvatar = async (req, res) => {
+  try {
+    if (!req.file) {
+      return res.status(400).json({ success: false, message: 'No file uploaded' });
+    }
+
+    const user = await User.findById(req.user.id);
+    if (!user) {
+      return res.status(404).json({ success: false, message: 'User not found' });
+    }
+
+    const uploadDir = path.join(__dirname, '../uploads/avatars');
+    fs.mkdirSync(uploadDir, { recursive: true });
+
+    const filename = `avatar-${req.user.id}-${Date.now()}${path.extname(req.file.originalname)}`;
+    const filepath = path.join(uploadDir, filename);
+
+    fs.writeFileSync(filepath, req.file.buffer);
+
+    user.avatar = `/uploads/avatars/${filename}`;
+    await user.save();
+
+    res.json({ success: true, data: { avatar: user.avatar } });
+  } catch (err) {
+    console.error('updateAvatar error:', err.message);
+    res.status(500).json({ success: false, message: 'Server error' });
+  }
+};
+
+module.exports = { updateProfile, changePassword, deleteAccount, getStats, updateAvatar };

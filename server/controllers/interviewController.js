@@ -22,7 +22,23 @@ const getInterviews = async (req, res) => {
 // @route   POST /api/interviews
 const createInterview = async (req, res) => {
   try {
-    const { title, role, personality, difficulty, resumeText } = req.body;
+    let resumeContent = req.body.resumeText || '';
+    
+    if (req.file) {
+      if (req.file.mimetype === 'application/pdf') {
+        const pdfParse = require('pdf-parse');
+        const data = await pdfParse(req.file.buffer);
+        resumeContent = data.text;
+      } else if (req.file.mimetype === 'application/vnd.openxmlformats-officedocument.wordprocessingml.document') {
+        const mammoth = require('mammoth');
+        const result = await mammoth.extractRawText({ buffer: req.file.buffer });
+        resumeContent = result.value;
+      } else if (req.file.mimetype === 'text/plain') {
+        resumeContent = req.file.buffer.toString('utf-8');
+      }
+    }
+
+    const { title, role, personality, difficulty } = req.body;
 
     const interview = await Interview.create({
       userId: req.user.id,
@@ -30,7 +46,7 @@ const createInterview = async (req, res) => {
       role: role || '',
       personality: personality || 'Friendly',
       difficulty: difficulty || 'Medium',
-      resumeText: resumeText || '',
+      resumeText: resumeContent,
       status: 'active'
     });
 
@@ -67,7 +83,7 @@ const getInterview = async (req, res) => {
 // @route   PUT /api/interviews/:id/end
 const endInterview = async (req, res) => {
   try {
-    const interview = await Interview.findById(req.params.id);
+    const interview = await Interview.findById(req.params.id).populate('answers.questionId');
 
     if (!interview) {
       return res.status(404).json({ success: false, message: 'Interview not found' });

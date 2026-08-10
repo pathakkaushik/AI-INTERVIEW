@@ -1,4 +1,4 @@
-import React, { useState, useEffect } from 'react';
+import React, { useState, useEffect, useRef } from 'react';
 import { motion } from 'framer-motion';
 import Button from '../components/Button';
 import Card from '../components/Card';
@@ -11,6 +11,9 @@ const Profile = () => {
   const { user, updateUser, logout } = useAuth();
   const [name, setName] = useState(user?.name || '');
   const [email, setEmail] = useState(user?.email || '');
+  const [avatarUrl, setAvatarUrl] = useState(user?.avatar || null);
+  const [avatarUploading, setAvatarUploading] = useState(false);
+  const avatarInputRef = useRef(null);
   const [currentPassword, setCurrentPassword] = useState('');
   const [newPassword, setNewPassword] = useState('');
   const [confirmPassword, setConfirmPassword] = useState('');
@@ -22,6 +25,10 @@ const Profile = () => {
   useEffect(() => {
     api.getProfileStats().then(res => setStats(res.data)).catch(console.error);
   }, []);
+
+  useEffect(() => {
+    setAvatarUrl(user?.avatar || null);
+  }, [user]);
 
   const showMessage = (text, type = 'success') => {
     setMessage({ text, type });
@@ -90,7 +97,72 @@ const Profile = () => {
             {/* Left Column: Profile Card */}
             <div>
               <Card style={{ textAlign: 'center' }}>
-                <div className="avatar-circle" style={{ margin: '0 auto 1rem' }}>{initials}</div>
+                <div 
+                  onClick={() => avatarInputRef.current?.click()}
+                  style={{ 
+                    margin: '0 auto 1rem', 
+                    cursor: 'pointer', 
+                    position: 'relative',
+                    width: '80px',
+                    height: '80px',
+                    borderRadius: '50%',
+                    overflow: 'hidden',
+                    border: '3px solid var(--accent-blue)',
+                    display: 'flex',
+                    alignItems: 'center',
+                    justifyContent: 'center',
+                    background: avatarUrl ? 'transparent' : 'linear-gradient(135deg, var(--accent-blue), var(--accent-purple))',
+                    fontSize: '1.5rem',
+                    fontWeight: 700,
+                    color: '#fff',
+                    transition: 'all 0.3s ease'
+                  }}
+                  title="Click to change avatar"
+                >
+                  {avatarUrl ? (
+                    <img src={avatarUrl.startsWith('http') ? avatarUrl : `${(import.meta.env.VITE_API_URL || 'http://localhost:5000/api').replace('/api', '')}${avatarUrl}`} alt="Avatar" style={{ width: '100%', height: '100%', objectFit: 'cover' }} />
+                  ) : (
+                    initials
+                  )}
+                  <div style={{
+                    position: 'absolute',
+                    bottom: 0,
+                    left: 0,
+                    right: 0,
+                    background: 'rgba(0,0,0,0.6)',
+                    color: '#fff',
+                    fontSize: '0.6rem',
+                    textAlign: 'center',
+                    padding: '2px 0',
+                    opacity: 0.8
+                  }}>
+                    {avatarUploading ? '...' : '📷'}
+                  </div>
+                </div>
+                <input
+                  ref={avatarInputRef}
+                  type="file"
+                  accept="image/jpeg,image/png,image/gif,image/webp"
+                  style={{ display: 'none' }}
+                  onChange={async (e) => {
+                    const file = e.target.files[0];
+                    if (!file) return;
+                    setAvatarUploading(true);
+                    try {
+                      const formData = new FormData();
+                      formData.append('avatar', file);
+                      const response = await api.uploadAvatar(formData);
+                      if (response.success) {
+                        setAvatarUrl(response.data.avatar);
+                        if (updateUser) updateUser({ ...user, avatar: response.data.avatar });
+                      }
+                    } catch (err) {
+                      console.error('Avatar upload failed:', err);
+                    } finally {
+                      setAvatarUploading(false);
+                    }
+                  }}
+                />
                 <h2 style={{ fontSize: '1.25rem', fontWeight: 700 }}>{user?.name}</h2>
                 <p className="text-secondary" style={{ fontSize: '0.875rem', marginBottom: '0.5rem' }}>{user?.email}</p>
                 <span className={`badge ${user?.role === 'admin' ? 'badge-purple' : 'badge-blue'}`}>{user?.role || 'user'}</span>

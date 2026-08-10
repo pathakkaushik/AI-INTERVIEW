@@ -283,7 +283,7 @@ Return ONLY valid JSON in this exact format (no markdown, no code fences):
 async function generateResults(interview, answers) {
   try {
     const answersText = answers.map((a, i) =>
-      `Q${i + 1}: ${a.questionId ? a.questionId : 'N/A'}\nAnswer: ${a.answerText || 'N/A'}\nScore: ${a.score || 0}`
+      `Q${i + 1}: ${a.questionId?.text || a.questionId || 'N/A'}\nAnswer: ${a.answerText || 'N/A'}\nScore: ${a.score || 0}`
     ).join('\n\n');
 
     const prompt = `You are generating comprehensive interview results for a "${interview.role}" interview.

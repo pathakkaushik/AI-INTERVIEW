@@ -51,6 +51,9 @@ const register = async (req, res) => {
         id: user._id,
         name: user.name,
         email: user.email,
+        role: user.role,
+        avatar: user.avatar,
+        isEmailVerified: user.isEmailVerified,
         readinessScore: user.readinessScore,
         progress: user.progress
       }
@@ -102,6 +105,9 @@ const login = async (req, res) => {
         id: user._id,
         name: user.name,
         email: user.email,
+        role: user.role,
+        avatar: user.avatar,
+        isEmailVerified: user.isEmailVerified,
         readinessScore: user.readinessScore,
         progress: user.progress
       }

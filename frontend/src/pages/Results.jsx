@@ -1,4 +1,5 @@
-import React, { useState, useEffect } from 'react';
+import React, { useState, useEffect, useRef } from 'react';
+import html2canvas from 'html2canvas';
 import { useNavigate, useParams } from 'react-router-dom';
 import { motion } from 'framer-motion';
 import Button from '../components/Button';
@@ -619,6 +620,24 @@ const Results = () => {
   const [actionPlanLoading, setActionPlanLoading] = useState(false);
   const [copied, setCopied] = useState(false);
 
+  const timelineRef = useRef(null);
+  const radarRef = useRef(null);
+
+  const handlePDFExport = async () => {
+    const chartImages = {};
+    try {
+      if (timelineRef.current) {
+        const canvas = await html2canvas(timelineRef.current, { backgroundColor: '#1a1a2e', scale: 2 });
+        chartImages.timeline = canvas.toDataURL('image/png');
+      }
+      if (radarRef.current) {
+        const canvas = await html2canvas(radarRef.current, { backgroundColor: '#1a1a2e', scale: 2 });
+        chartImages.radar = canvas.toDataURL('image/png');
+      }
+    } catch (e) { console.warn('Chart capture failed:', e); }
+    exportResultsPDF(result, skills, chartImages);
+  };
+
   useEffect(() => {
     if (!interviewId) {
       setLoading(false);
@@ -787,7 +806,7 @@ const Results = () => {
           <Button variant="outline" onClick={handleShare}>
             <Share2 size={16}/> {copied ? 'Copied!' : 'Share'}
           </Button>
-          <Button variant="outline" onClick={() => exportResultsPDF(result, skills)}><Download size={16}/> Export PDF</Button>
+          <Button variant="outline" onClick={handlePDFExport}><Download size={16}/> Export PDF</Button>
           <Button onClick={() => navigate('/dashboard')}>Back to Dashboard</Button>
         </div>
       </div>
@@ -796,7 +815,9 @@ const Results = () => {
         
         {/* Left Col: Analytics & Breakdown */}
         <div className="lg:col-span-2 flex flex-col gap-6">
-          <PerformanceTimeline answers={answersList} />
+          <div ref={timelineRef}>
+            <PerformanceTimeline answers={answersList} />
+          </div>
 
           <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
             <SpeechPaceCard wpm={wpm} />
@@ -873,7 +894,7 @@ const Results = () => {
 
           <Card className="flex-1">
             <h3 className="text-sm font-semibold mb-4">Skill Gap Analysis</h3>
-            <div className="-mt-6 -ml-4">
+            <div className="-mt-6 -ml-4" ref={radarRef}>
                <SkillRadarChart data={skills} />
             </div>
             <div className="text-center mt-2">

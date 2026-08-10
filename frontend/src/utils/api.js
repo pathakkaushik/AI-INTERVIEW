@@ -1,4 +1,4 @@
-const API_BASE = 'http://localhost:5000/api';
+const API_BASE = import.meta.env.VITE_API_URL || 'http://localhost:5000/api';
 
 const getHeaders = () => {
   const token = localStorage.getItem('token');
@@ -65,4 +65,8 @@ export const api = {
   deleteUser: (id) => fetch(`${API_BASE}/admin/users/${id}`, { method: 'DELETE', headers: getHeaders() }).then(handleResponse),
   getAdminInterviews: (page = 1) => fetch(`${API_BASE}/admin/interviews?page=${page}`, { headers: getHeaders() }).then(handleResponse),
   deleteAnyInterview: (id) => fetch(`${API_BASE}/admin/interviews/${id}`, { method: 'DELETE', headers: getHeaders() }).then(handleResponse),
+
+  // File upload methods
+  createInterviewWithFile: (formData) => fetch(`${API_BASE}/interviews`, { method: 'POST', headers: { ...(localStorage.getItem('token') && { Authorization: `Bearer ${localStorage.getItem('token')}` }) }, body: formData }).then(handleResponse),
+  uploadAvatar: (formData) => fetch(`${API_BASE}/profile/avatar`, { method: 'PUT', headers: { ...(localStorage.getItem('token') && { Authorization: `Bearer ${localStorage.getItem('token')}` }) }, body: formData }).then(handleResponse),
 };

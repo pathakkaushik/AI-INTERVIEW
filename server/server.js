@@ -2,8 +2,21 @@ require('dotenv').config();
 
 const express = require('express');
 const cors = require('cors');
+const rateLimit = require('express-rate-limit');
 const connectDB = require('./config/db');
 const errorHandler = require('./middleware/errorHandler');
+
+const globalLimiter = rateLimit({
+  windowMs: 15 * 60 * 1000,
+  max: 100,
+  message: 'Too many requests, please try again later.'
+});
+
+const aiLimiter = rateLimit({
+  windowMs: 15 * 60 * 1000,
+  max: 20,
+  message: 'Too many AI requests, please slow down.'
+});
 
 const app = express();
 
@@ -13,10 +26,19 @@ app.use(cors({
   credentials: true
 }));
 
+// Rate Limiting
+app.use(globalLimiter);
+
 // Body parser
 app.use(express.json());
 
+// Serve uploads
+app.use('/uploads', express.static(require('path').join(__dirname, 'uploads')));
+
 // Mount routes
+app.use('/api/questions', aiLimiter);
+app.use('/api/interviews/cheat-sheet', aiLimiter);
+
 app.use('/api/auth', require('./routes/auth'));
 app.use('/api/interviews', require('./routes/interviews'));
 app.use('/api/questions', require('./routes/questions'));

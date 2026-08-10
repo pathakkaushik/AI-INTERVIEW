@@ -7,6 +7,7 @@ const { sendVerificationEmail, sendPasswordResetEmail } = require('../utils/emai
 const sendVerification = async (req, res) => {
   try {
     const user = await User.findById(req.user.id);
+    if (!user) return res.status(404).json({ success: false, message: 'User not found' });
 
     if (user.isEmailVerified) {
       return res.json({ success: true, message: 'Email already verified' });
